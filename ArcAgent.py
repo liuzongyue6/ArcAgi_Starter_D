@@ -140,47 +140,33 @@ class ArcAgent:
     def _has_enclosed_region(self, grid, border_mask):
         """
         检查边界是否围成封闭区域
-        方法：从边缘的所有0单元格开始泛洪填充，看是否有0单元格无法到达
+        方法：找到与此边界相邻的0单元格，检查它们是否能到达边缘
         """
         height, width = grid.shape
         
-        # 标记所有从边缘可达的0单元格
-        reachable_from_edge = np.zeros_like(grid, dtype=bool)
-        stack = []
-        
-        # 从所有边缘的非1单元格开始
+        # 找到与边界相邻的所有0单元格
+        adjacent_zeros = set()
         for i in range(height):
-            if grid[i, 0] == 0:
-                stack.append((i, 0))
-            if grid[i, width-1] == 0:
-                stack.append((i, width-1))
+            for j in range(width):
+                if border_mask[i, j]:
+                    # 检查4个方向的邻居
+                    for di, dj in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        ni, nj = i + di, j + dj
+                        if 0 <= ni < height and 0 <= nj < width:
+                            if grid[ni, nj] == 0:
+                                adjacent_zeros.add((ni, nj))
         
-        for j in range(width):
-            if grid[0, j] == 0:
-                stack.append((0, j))
-            if grid[height-1, j] == 0:
-                stack.append((height-1, j))
+        # 如果没有相邻的0单元格，说明边界不围成任何区域
+        if not adjacent_zeros:
+            return False
         
-        # 泛洪填充（4方向）
-        while stack:
-            i, j = stack.pop()
-            
-            if i < 0 or i >= height or j < 0 or j >= width:
-                continue
-            if reachable_from_edge[i, j] or grid[i, j] != 0:
-                continue
-            
-            reachable_from_edge[i, j] = True
-            
-            # 4个方向
-            for di, dj in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                stack.append((i + di, j + dj))
+        # 检查这些相邻的0单元格是否有至少一个无法到达边缘
+        # （如果都能到达边缘，说明是开放形状；如果有的到不了边缘，说明是封闭形状）
+        for start_pos in adjacent_zeros:
+            if not self._can_reach_edge(grid, start_pos[0], start_pos[1]):
+                return True
         
-        # 如果有0单元格无法从边缘到达，说明有封闭区域
-        all_zeros = (grid == 0)
-        enclosed_zeros = all_zeros & ~reachable_from_edge
-        
-        return np.any(enclosed_zeros)
+        return False
 
     def _process_closed_border(self, result, border_mask, original_grid):
         """
@@ -213,14 +199,17 @@ class ArcAgent:
         for i in range(height):
             for j in range(width):
                 if border_mask[i, j]:
-                    # 检查4个方向的邻居（内围用4方向更精确）
-                    for di, dj in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                        ni, nj = i + di, j + dj
-                        if 0 <= ni < height and 0 <= nj < width:
-                            if original_grid[ni, nj] == 0:
-                                # 检查这个0是否在内围（不能到达边缘）
-                                if not self._can_reach_edge(original_grid, ni, nj):
-                                    inner_ring[ni, nj] = True
+                    # 检查8个方向的邻居（与外围保持一致）
+                    for di in [-1, 0, 1]:
+                        for dj in [-1, 0, 1]:
+                            if di == 0 and dj == 0:
+                                continue
+                            ni, nj = i + di, j + dj
+                            if 0 <= ni < height and 0 <= nj < width:
+                                if original_grid[ni, nj] == 0:
+                                    # 检查这个0是否在内围（不能到达边缘）
+                                    if not self._can_reach_edge(original_grid, ni, nj):
+                                        inner_ring[ni, nj] = True
         
         # 3. 应用颜色
         result[outer_ring] = 2      # 外围用2号色（橙色）
