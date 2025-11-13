@@ -1,5 +1,8 @@
-# Python
+# Python cache
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
 *.py[cod]
 *$py.class
 *.so
@@ -20,10 +23,16 @@ wheels/
 .installed.cfg
 *.egg
 
+# Results files
+*_results.json
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
 # Virtual environments
 venv/
-ENV/
 env/
+ENV/
 .venv
 
 # IDE
@@ -40,4 +49,3 @@ Thumbs.db
 # Temporary files
 /tmp/
 *.tmp
-*_results.json
