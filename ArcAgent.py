@@ -1277,6 +1277,76 @@ class ArcAgent:
         return result
 
     def solve_ms_d_18419cfa(self, test_input_grid):
+        """
+        处理 18419cfa 案例：房间镜像对称
+        1. 找到所有由8号墙围成的房间
+        2. 识别每个房间墙上的把手（突出部分）
+        3. 根据把手方向确定镜像轴
+        4. 将房间内的2号点沿镜像轴对称
+        """
+        result = test_input_grid.copy()
+        height, width = test_input_grid.shape
+        
+        # 找到所有房间
+        rooms = self._find_rooms(test_input_grid)
+        
+        if self.is_debugging:
+            print(f"[18419cfa] Found {len(rooms)} room(s)")
+        
+        # 对每个房间进行镜像处理
+        for room_idx, room_mask in enumerate(rooms):
+            if self.is_debugging:
+                print(f"[18419cfa] Processing room {room_idx + 1}")
+            
+            # 检测把手方向和镜像轴
+            handle_direction, mirror_axis = self._detect_handle_and_axis(test_input_grid, room_mask)
+            
+            if self.is_debugging:
+                print(f"  Handle direction: {handle_direction}")
+                print(f"  Mirror axis: {mirror_axis}")
+            
+            # 如果没有检测到把手，跳过这个房间
+            if handle_direction is None:
+                if self.is_debugging:
+                    print(f"  No handle detected, skipping room")
+                continue
+            
+            # 镜像房间内的2号点
+            result = self._mirror_twos_in_room(result, test_input_grid, room_mask, 
+                                               handle_direction, mirror_axis)
+        
+        return result
+
+    def _find_rooms(self, grid):
+        """
+        找到所有由8号墙围成的房间
+        返回每个房间的内部区域掩码列表
+        """
+        height, width = grid.shape
+        visited = np.zeros_like(grid, dtype=bool)
+        rooms = []
+        
+        # 遍历网格，找到所有0或2的连通区域
+        for i in range(height):
+            for j in range(width):
+                if not visited[i, j] and grid[i, j] != 8:
+                    # 找到一个未访问的非墙区域，进行泛洪填充
+                    region_mask = self._flood_fill_region(grid, i, j, visited)
+                    
+                    # 检查这个区域是否被墙围起来（是一个房间）
+                    if self._is_enclosed_room(grid, region_mask):
+                        rooms.append(region_mask)
+        
+        return rooms
+
+    def _flood_fill_region(self, grid, start_i, start_j, visited):
+        """泛洪填充找到一个连通的非墙区域（4方向连通）"""
+        height, width = grid.shape
+        region_mask = np.zeros_like(grid, dtype=bool)
+        stack = [(start_i, start_j)]
+        
+        while stack:
+            i, j = stack.pop()
             
             if i < 0 or i >= height or j < 0 or j >= width:
                 continue
