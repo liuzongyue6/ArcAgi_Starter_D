@@ -1,7 +1,14 @@
 # Python cache
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
 *.py[cod]
 *$py.class
+.Python
+
+# Results files
+*_results.json
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -16,6 +23,7 @@ ENV/
 .idea/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
