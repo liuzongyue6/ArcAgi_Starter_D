@@ -30,7 +30,9 @@ class ArcAgent:
             print(f"Problem type detected: {what_kind_of_problem}")
 
         # 2. 根据问题类型调用相应的解法
-        if what_kind_of_problem == "ms_d_d931c21c":
+        if what_kind_of_problem == "ms_d_c1990cce":
+            final_answer = self.solve_ms_d_c1990cce(test_input_grid)
+        elif what_kind_of_problem == "ms_d_d931c21c":
             final_answer = self.solve_ms_d_d931c21c(test_input_grid)
         else:
             final_answer = self.solve_ms_d_d931c21c(test_input_grid)
@@ -46,10 +48,61 @@ class ArcAgent:
         if len(training_examples) == 0:
             return "Unknown Type"
 
+        if self.check_if_this_is_ms_d_c1990cce(training_examples):
+            return "ms_d_c1990cce"
+        
         if self.check_if_this_is_ms_d_d931c21c(training_examples):
             return "ms_d_d931c21c"
        
         return "ms_d_d931c21c"
+
+    def check_if_this_is_ms_d_c1990cce(self, training_examples):
+        """检查是否是 c1990cce (对角线传播问题)"""
+        if len(training_examples) == 0:
+            if self.is_debugging:
+                print("[c1990cce Check] No training examples")
+            return False
+        
+        for idx, example in enumerate(training_examples):
+            input_grid = example.get_input_data().data()
+            output_grid = example.get_output_data().data()
+            
+            if self.is_debugging:
+                print(f"[c1990cce Check] Training example {idx}:")
+                print(f"  Input shape: {input_grid.shape}, Output shape: {output_grid.shape}")
+            
+            # c1990cce特征：输入是单行，输出是方阵
+            if len(input_grid.shape) != 2 or input_grid.shape[0] != 1:
+                if self.is_debugging:
+                    print(f"  Input is not single row - NOT c1990cce")
+                return False
+            
+            n = input_grid.shape[1]
+            if output_grid.shape != (n, n):
+                if self.is_debugging:
+                    print(f"  Output is not N×N square - NOT c1990cce")
+                return False
+            
+            # 检查输入是否有恰好一个红色(2)
+            if np.sum(input_grid == 2) != 1:
+                if self.is_debugging:
+                    print(f"  Input doesn't have exactly one red cell - NOT c1990cce")
+                return False
+            
+            # 尝试用我们的算法解决，看是否匹配
+            predicted_output = self.solve_ms_d_c1990cce(input_grid)
+            matches = np.array_equal(predicted_output, output_grid)
+            if self.is_debugging:
+                print(f"  Prediction matches: {matches}")
+                if not matches:
+                    print(f"  Differences found at {np.sum(predicted_output != output_grid)} positions")
+            
+            if not matches:
+                return False
+        
+        if self.is_debugging:
+            print("[c1990cce Check] All training examples match - this IS c1990cce")
+        return True
 
     def check_if_this_is_ms_d_d931c21c(self, training_examples):
         """检查是否是 d931c21c (封闭区域边界扩展)"""
@@ -84,6 +137,134 @@ class ArcAgent:
         if self.is_debugging:
             print("[d931c21c Check] All training examples match - this IS d931c21c")
         return True
+
+    def solve_ms_d_c1990cce(self, test_input_grid):
+        """
+        处理 c1990cce 案例：对角线传播 + 边界反弹
+        输入：单行，有一个红色方块(2)
+        输出：N×N方阵，背景为0
+        
+        变换过程：
+        1. 第0行：复制输入
+        2. 红色V形：从start_col向左下(↙)、右下(↘)扩散
+           - Row r: 左侧在start_col-r, 右侧在start_col+r
+           - 形成V形，直到触及边界
+        3. 蓝色：沿对角线出现
+           - RD对角线(↘)：红色后连续的蓝色
+           - LD对角线(↙)：红色后间隔的蓝色
+        """
+        # 确保输入是单行
+        if test_input_grid.shape[0] != 1:
+            if self.is_debugging:
+                print(f"[c1990cce] Warning: Input has {test_input_grid.shape[0]} rows, expected 1")
+            test_input_grid = test_input_grid[0:1, :]
+        
+        n = test_input_grid.shape[1]
+        result = np.zeros((n, n), dtype=int)
+        
+        # 第0行：复制输入
+        result[0, :] = test_input_grid[0, :]
+        
+        # 找到红色(2)的初始位置
+        red_positions = np.where(test_input_grid[0] == 2)[0]
+        if len(red_positions) == 0:
+            if self.is_debugging:
+                print("[c1990cce] Warning: No red cell found in input")
+            return result
+        
+        start_col = red_positions[0]
+        if self.is_debugging:
+            print(f"[c1990cce] Red starting position: column {start_col}")
+        
+        # 绘制红色V形和蓝色对角线
+        # 策略：逐行绘制，根据规则决定每个位置的颜色
+        
+        for row in range(1, n):
+            # 红色V形的位置
+            left_red_col = start_col - row
+            right_red_col = start_col + row
+            
+            # 绘制红色（如果在边界内）
+            if 0 <= left_red_col < n:
+                result[row, left_red_col] = 2
+            if 0 <= right_red_col < n and right_red_col != left_red_col:
+                result[row, right_red_col] = 2
+            
+            # 绘制蓝色对角线
+            # 蓝色沿多条对角线出现
+            for col in range(n):
+                if result[row, col] != 0:
+                    continue  # 已有红色
+                
+                # 计算对角线特征
+                rd_diag = col - row  # RD对角线: col = rd_diag + row
+                ld_diag = col + row  # LD对角线: col = ld_diag - row
+                
+                # 检查是否应该是蓝色
+                should_be_blue = False
+                
+                # RD对角线规则：
+                # - 对角线origin: rd_diag
+                # - 红色V在RD对角线start_col-2k (k=0,1,2,...)
+                # - 蓝色在RD对角线start_col-4k-4 (k=0,1,2,...)，红色后的行
+                
+                # 检查是否在蓝色RD对角线上
+                rd_offset = rd_diag - start_col
+                if rd_offset % 4 == -4 % 4 and rd_offset < 0:
+                    # 这是一条蓝色RD对角线（start_col-4, start_col-8, ...）
+                    # 需要在红色之后才出现蓝色
+                    # 红色在这条对角线上的行：col = rd_diag + row_red
+                    # 对于rd_diag，红色在row = start_col - rd_diag (因为红色在start_col-row)
+                    # 不对，让我重新思考...
+                    
+                    # 对于RD对角线rd_diag，检查是否有红色
+                    # 红色V的左臂在列start_col-row'，即rd_diag = start_col-row'-row'
+                    # 所以row' = (start_col - rd_diag) / 2
+                    
+                    # 简化：直接检查这条对角线上是否已经有红色
+                    has_red_above = False
+                    for r in range(row):
+                        c = rd_diag + r
+                        if 0 <= c < n and result[r, c] == 2:
+                            has_red_above = True
+                            break
+                    
+                    # 如果上方有红色，这个位置可以是蓝色
+                    if has_red_above:
+                        should_be_blue = True
+                
+                # LD对角线规则：
+                # - 红色V在LD对角线start_col+2k (k=0,1,2,...)
+                # - 蓝色也在这些对角线上，但在红色之后，且间隔出现
+                
+                # 检查是否在LD对角线上（红色和蓝色共享，且只在正偏移）
+                ld_offset = ld_diag - start_col
+                if ld_offset % 2 == 0 and ld_offset > 0:  # 只在正偏移，跳过start_col本身
+                    # 这是一条红色/蓝色LD对角线
+                    # 红色在某一行，蓝色在后续的奇数行
+                    
+                    # 找到这条对角线上的红色位置
+                    red_row = -1
+                    for r in range(row):
+                        c = ld_diag - r
+                        if 0 <= c < n and result[r, c] == 2:
+                            red_row = r
+                            break
+                    
+                    # 如果找到红色，且当前行在红色之后的奇数间隔
+                    if red_row >= 0:
+                        rows_after_red = row - red_row
+                        if rows_after_red % 2 == 0 and rows_after_red > 0:
+                            should_be_blue = True
+                
+                if should_be_blue:
+                    result[row, col] = 1
+        
+        return result
+    
+    def _generate_blue_diagonals(self, result, start_col, red_end_row, n):
+        """This method is no longer needed but kept for compatibility"""
+        pass
 
     def solve_ms_d_d931c21c(self, test_input_grid):
         """
