@@ -3,20 +3,27 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.py[cod]
+*$py.class
 .Python
 
 # Results files
 *_results.json
 
-# Virtual environment
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Virtual environments
 venv/
 env/
+ENV/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
