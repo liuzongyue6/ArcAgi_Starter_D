@@ -30,7 +30,9 @@ class ArcAgent:
             print(f"Problem type detected: {what_kind_of_problem}")
 
         # 2. 根据问题类型调用相应的解法
-        if what_kind_of_problem == "ms_d_d931c21c":
+        if what_kind_of_problem == "ms_d_2546ccf6":
+            final_answer = self.solve_ms_d_2546ccf6(test_input_grid)
+        elif what_kind_of_problem == "ms_d_d931c21c":
             final_answer = self.solve_ms_d_d931c21c(test_input_grid)
         elif what_kind_of_problem == "ms_d_18419cfa":
             final_answer = self.solve_ms_d_18419cfa(test_input_grid)
@@ -48,13 +50,49 @@ class ArcAgent:
         if len(training_examples) == 0:
             return "Unknown Type"
 
-        if self.check_if_this_is_ms_d_18419cfa(training_examples):
+        if self.check_if_this_is_ms_d_2546ccf6(training_examples):
+            return "ms_d_2546ccf6"
+        elif self.check_if_this_is_ms_d_18419cfa(training_examples):
             return "ms_d_18419cfa"
         
-        if self.check_if_this_is_ms_d_d931c21c(training_examples):
+        elif self.check_if_this_is_ms_d_d931c21c(training_examples):
             return "ms_d_d931c21c"
        
         return "ms_d_d931c21c"
+
+    def check_if_this_is_ms_d_2546ccf6(self, training_examples):
+        """检查是否是 2546ccf6 (走廊对称填充)"""
+        if len(training_examples) == 0:
+            if self.is_debugging:
+                print("[2546ccf6 Check] No training examples")
+            return False
+        
+        for idx, example in enumerate(training_examples):
+            input_grid = example.get_input_data().data()
+            output_grid = example.get_output_data().data()
+            
+            if self.is_debugging:
+                print(f"[2546ccf6 Check] Training example {idx}:")
+                print(f"  Input shape: {input_grid.shape}, Output shape: {output_grid.shape}")
+            
+            if input_grid.shape != output_grid.shape:
+                if self.is_debugging:
+                    print(f"  Shape mismatch - NOT 2546ccf6")
+                return False
+            
+            predicted_output = self.solve_ms_d_2546ccf6(input_grid)
+            matches = np.array_equal(predicted_output, output_grid)
+            if self.is_debugging:
+                print(f"  Prediction matches: {matches}")
+                if not matches:
+                    print(f"  Differences found at {np.sum(predicted_output != output_grid)} positions")
+            
+            if not matches:
+                return False
+        
+        if self.is_debugging:
+            print("[2546ccf6 Check] All training examples match - this IS 2546ccf6")
+        return True
 
     def check_if_this_is_ms_d_d931c21c(self, training_examples):
         """检查是否是 d931c21c (封闭区域边界扩展)"""
@@ -89,6 +127,219 @@ class ArcAgent:
         if self.is_debugging:
             print("[d931c21c Check] All training examples match - this IS d931c21c")
         return True
+
+    def solve_ms_d_2546ccf6(self, test_input_grid):
+        """
+        处理 2546ccf6 案例：走廊对称填充
+        1. 找到分隔色（形成网格的颜色）
+        2. 识别所有走廊（矩形区域被分隔线包围）
+        3. 对每个走廊，从相邻走廊镜像填充：
+           - 垂直镜像（从上下走廊）
+           - 水平镜像（从左右走廊）
+        4. 分隔色保持不变
+        
+        关键：只从原始输入中的非空走廊镜像到空走廊
+        """
+        result = test_input_grid.copy()
+        height, width = test_input_grid.shape
+        
+        # 1. 识别分隔色（出现在完整行或列的颜色）
+        separator_color = self._find_separator_color(test_input_grid)
+        if self.is_debugging:
+            print(f"[2546ccf6] Separator color: {separator_color}")
+        
+        # 2. 找到所有分隔线（行和列）
+        separator_rows = self._find_separator_lines(test_input_grid, separator_color, axis=0)
+        separator_cols = self._find_separator_lines(test_input_grid, separator_color, axis=1)
+        
+        # 添加边界作为"虚拟"分隔线
+        separator_rows = [-1] + separator_rows + [height]
+        separator_cols = [-1] + separator_cols + [width]
+        
+        if self.is_debugging:
+            print(f"[2546ccf6] Separator rows: {separator_rows}")
+            print(f"[2546ccf6] Separator cols: {separator_cols}")
+        
+        # 3. 构建走廊网格
+        corridors = []
+        for i in range(len(separator_rows) - 1):
+            row = []
+            for j in range(len(separator_cols) - 1):
+                row_start = separator_rows[i] + 1
+                row_end = separator_rows[i + 1]
+                col_start = separator_cols[j] + 1
+                col_end = separator_cols[j + 1]
+                
+                if row_start < row_end and col_start < col_end:
+                    row.append((row_start, row_end, col_start, col_end))
+                else:
+                    row.append(None)
+            corridors.append(row)
+        
+        # 4. 识别哪些走廊在输入中有数据
+        corridors_with_data = set()
+        for i in range(len(corridors)):
+            for j in range(len(corridors[i])):
+                if corridors[i][j] is None:
+                    continue
+                
+                row_start, row_end, col_start, col_end = corridors[i][j]
+                corridor = test_input_grid[row_start:row_end, col_start:col_end]
+                
+                # 检查是否有非零非分隔色的数据
+                if np.any((corridor != 0) & (corridor != separator_color)):
+                    corridors_with_data.add((i, j))
+        
+        if self.is_debugging:
+            print(f"[2546ccf6] Corridors with data: {corridors_with_data}")
+        
+        # 5. 识别哪些走廊应该被填充（有至少2个相邻走廊有相同颜色的数据）
+        corridors_to_fill = {}
+        for i in range(len(corridors)):
+            for j in range(len(corridors[i])):
+                if corridors[i][j] is None or (i, j) in corridors_with_data:
+                    continue
+                
+                # 收集相邻走廊的数据和颜色
+                adjacent_with_data = []
+                
+                if (i-1, j) in corridors_with_data:  # top
+                    src_row_start, src_row_end, src_col_start, src_col_end = corridors[i-1][j]
+                    src = test_input_grid[src_row_start:src_row_end, src_col_start:src_col_end]
+                    colors = set(np.unique(src)) - {0, separator_color}
+                    adjacent_with_data.append(((i-1, j, 'top'), colors))
+                
+                if (i+1, j) in corridors_with_data:  # bottom
+                    src_row_start, src_row_end, src_col_start, src_col_end = corridors[i+1][j]
+                    src = test_input_grid[src_row_start:src_row_end, src_col_start:src_col_end]
+                    colors = set(np.unique(src)) - {0, separator_color}
+                    adjacent_with_data.append(((i+1, j, 'bottom'), colors))
+                
+                if (i, j-1) in corridors_with_data:  # left
+                    src_row_start, src_row_end, src_col_start, src_col_end = corridors[i][j-1]
+                    src = test_input_grid[src_row_start:src_row_end, src_col_start:src_col_end]
+                    colors = set(np.unique(src)) - {0, separator_color}
+                    adjacent_with_data.append(((i, j-1, 'left'), colors))
+                
+                if (i, j+1) in corridors_with_data:  # right
+                    src_row_start, src_row_end, src_col_start, src_col_end = corridors[i][j+1]
+                    src = test_input_grid[src_row_start:src_row_end, src_col_start:src_col_end]
+                    colors = set(np.unique(src)) - {0, separator_color}
+                    adjacent_with_data.append(((i, j+1, 'right'), colors))
+                
+                # 只有当有至少2个相邻走廊，且其中至少2个有相同的颜色时才填充
+                if len(adjacent_with_data) >= 2:
+                    # 找出有相同颜色的相邻走廊对
+                    for k in range(len(adjacent_with_data)):
+                        for m in range(k+1, len(adjacent_with_data)):
+                            info1, colors1 = adjacent_with_data[k]
+                            info2, colors2 = adjacent_with_data[m]
+                            
+                            # 检查这两个走廊是否有共同颜色
+                            common = colors1 & colors2
+                            if common:
+                                # 找到所有有这个共同颜色的相邻走廊
+                                valid_adjacent = [info for info, colors in adjacent_with_data if colors & common]
+                                if len(valid_adjacent) >= 2:
+                                    corridors_to_fill[(i, j)] = valid_adjacent
+                                    break
+                        if (i, j) in corridors_to_fill:
+                            break
+        
+        if self.is_debugging:
+            print(f"[2546ccf6] Corridors to fill: {list(corridors_to_fill.keys())}")
+        
+        # 6. 对需要填充的走廊进行镜像填充
+        for (i, j), adjacent_list in corridors_to_fill.items():
+            row_start, row_end, col_start, col_end = corridors[i][j]
+            
+            for src_i, src_j, direction in adjacent_list:
+                src_row_start, src_row_end, src_col_start, src_col_end = corridors[src_i][src_j]
+                src_corridor = result[src_row_start:src_row_end, src_col_start:src_col_end]
+                
+                if direction in ['top', 'bottom']:
+                    self._mirror_fill(result, row_start, row_end, col_start, col_end, 
+                                    src_corridor, mirror_vertical=True, mirror_horizontal=False)
+                else:  # left or right
+                    self._mirror_fill(result, row_start, row_end, col_start, col_end,
+                                    src_corridor, mirror_vertical=False, mirror_horizontal=True)
+        
+        return result
+    
+    def _find_separator_color(self, grid):
+        """找到分隔色（在完整行或列中出现最多的非零颜色）"""
+        height, width = grid.shape
+        color_counts = {}
+        
+        # 统计每种颜色在完整行/列中出现的次数
+        for color in np.unique(grid):
+            if color == 0:
+                continue
+            
+            # 检查是否有完整的行都是这个颜色
+            for i in range(height):
+                if np.all(grid[i, :] == color):
+                    color_counts[color] = color_counts.get(color, 0) + 1
+            
+            # 检查是否有完整的列都是这个颜色
+            for j in range(width):
+                if np.all(grid[:, j] == color):
+                    color_counts[color] = color_counts.get(color, 0) + 1
+        
+        # 返回出现最多的颜色
+        if color_counts:
+            return max(color_counts, key=color_counts.get)
+        
+        return None
+    
+    def _find_separator_lines(self, grid, separator_color, axis=0):
+        """
+        找到所有分隔线的索引
+        axis=0: 找水平分隔线（行）
+        axis=1: 找垂直分隔线（列）
+        """
+        if axis == 0:
+            # 查找水平分隔线（行）
+            lines = []
+            for i in range(grid.shape[0]):
+                if np.all(grid[i, :] == separator_color):
+                    lines.append(i)
+        else:
+            # 查找垂直分隔线（列）
+            lines = []
+            for j in range(grid.shape[1]):
+                if np.all(grid[:, j] == separator_color):
+                    lines.append(j)
+        
+        return lines
+    
+    def _mirror_fill(self, result, row_start, row_end, col_start, col_end, 
+                    src_corridor, mirror_vertical, mirror_horizontal):
+        """
+        从源走廊镜像填充到目标走廊
+        只在目标位置为0时填充（不覆盖已有数据）
+        返回是否有任何填充发生
+        """
+        target_corridor = result[row_start:row_end, col_start:col_end]
+        
+        # 检查尺寸是否匹配
+        if target_corridor.shape != src_corridor.shape:
+            return False
+        
+        # 应用镜像变换
+        mirrored = src_corridor.copy()
+        if mirror_vertical:
+            mirrored = mirrored[::-1, :]
+        if mirror_horizontal:
+            mirrored = mirrored[:, ::-1]
+        
+        # 只在目标为0的地方填充
+        mask = (target_corridor == 0) & (mirrored != 0)
+        changed = np.any(mask)
+        target_corridor[mask] = mirrored[mask]
+        
+        result[row_start:row_end, col_start:col_end] = target_corridor
+        return changed
 
     def solve_ms_d_d931c21c(self, test_input_grid):
         """
