@@ -172,55 +172,93 @@ class ArcAgent:
                     row.append(None)
             corridors.append(row)
         
-        # 4. 对每个走廊进行镜像填充
-        # 策略：从原始输入镜像，多次迭代直到收敛
-        max_iterations = 10
-        for iteration in range(max_iterations):
-            changed = False
+        # 4. 识别哪些走廊在输入中有数据
+        corridors_with_data = set()
+        for i in range(len(corridors)):
+            for j in range(len(corridors[i])):
+                if corridors[i][j] is None:
+                    continue
+                
+                row_start, row_end, col_start, col_end = corridors[i][j]
+                corridor = test_input_grid[row_start:row_end, col_start:col_end]
+                
+                # 检查是否有非零非分隔色的数据
+                if np.any((corridor != 0) & (corridor != separator_color)):
+                    corridors_with_data.add((i, j))
+        
+        if self.is_debugging:
+            print(f"[2546ccf6] Corridors with data: {corridors_with_data}")
+        
+        # 5. 识别哪些走廊应该被填充（有至少2个相邻走廊有相同颜色的数据）
+        corridors_to_fill = {}
+        for i in range(len(corridors)):
+            for j in range(len(corridors[i])):
+                if corridors[i][j] is None or (i, j) in corridors_with_data:
+                    continue
+                
+                # 收集相邻走廊的数据和颜色
+                adjacent_with_data = []
+                
+                if (i-1, j) in corridors_with_data:  # top
+                    src_row_start, src_row_end, src_col_start, src_col_end = corridors[i-1][j]
+                    src = test_input_grid[src_row_start:src_row_end, src_col_start:src_col_end]
+                    colors = set(np.unique(src)) - {0, separator_color}
+                    adjacent_with_data.append(((i-1, j, 'top'), colors))
+                
+                if (i+1, j) in corridors_with_data:  # bottom
+                    src_row_start, src_row_end, src_col_start, src_col_end = corridors[i+1][j]
+                    src = test_input_grid[src_row_start:src_row_end, src_col_start:src_col_end]
+                    colors = set(np.unique(src)) - {0, separator_color}
+                    adjacent_with_data.append(((i+1, j, 'bottom'), colors))
+                
+                if (i, j-1) in corridors_with_data:  # left
+                    src_row_start, src_row_end, src_col_start, src_col_end = corridors[i][j-1]
+                    src = test_input_grid[src_row_start:src_row_end, src_col_start:src_col_end]
+                    colors = set(np.unique(src)) - {0, separator_color}
+                    adjacent_with_data.append(((i, j-1, 'left'), colors))
+                
+                if (i, j+1) in corridors_with_data:  # right
+                    src_row_start, src_row_end, src_col_start, src_col_end = corridors[i][j+1]
+                    src = test_input_grid[src_row_start:src_row_end, src_col_start:src_col_end]
+                    colors = set(np.unique(src)) - {0, separator_color}
+                    adjacent_with_data.append(((i, j+1, 'right'), colors))
+                
+                # 只有当有至少2个相邻走廊，且其中至少2个有相同的颜色时才填充
+                if len(adjacent_with_data) >= 2:
+                    # 找出有相同颜色的相邻走廊对
+                    for k in range(len(adjacent_with_data)):
+                        for m in range(k+1, len(adjacent_with_data)):
+                            info1, colors1 = adjacent_with_data[k]
+                            info2, colors2 = adjacent_with_data[m]
+                            
+                            # 检查这两个走廊是否有共同颜色
+                            common = colors1 & colors2
+                            if common:
+                                # 找到所有有这个共同颜色的相邻走廊
+                                valid_adjacent = [info for info, colors in adjacent_with_data if colors & common]
+                                if len(valid_adjacent) >= 2:
+                                    corridors_to_fill[(i, j)] = valid_adjacent
+                                    break
+                        if (i, j) in corridors_to_fill:
+                            break
+        
+        if self.is_debugging:
+            print(f"[2546ccf6] Corridors to fill: {list(corridors_to_fill.keys())}")
+        
+        # 6. 对需要填充的走廊进行镜像填充
+        for (i, j), adjacent_list in corridors_to_fill.items():
+            row_start, row_end, col_start, col_end = corridors[i][j]
             
-            # 从所有四个方向尝试填充
-            for i in range(len(corridors)):
-                for j in range(len(corridors[i])):
-                    if corridors[i][j] is None:
-                        continue
-                    
-                    row_start, row_end, col_start, col_end = corridors[i][j]
-                    
-                    # 从上方走廊垂直镜像
-                    if i > 0 and corridors[i-1][j] is not None:
-                        src_row_start, src_row_end, src_col_start, src_col_end = corridors[i-1][j]
-                        src_corridor = result[src_row_start:src_row_end, src_col_start:src_col_end]
-                        if self._mirror_fill(result, row_start, row_end, col_start, col_end, 
-                                        src_corridor, mirror_vertical=True, mirror_horizontal=False):
-                            changed = True
-                    
-                    # 从下方走廊垂直镜像
-                    if i < len(corridors) - 1 and corridors[i+1][j] is not None:
-                        src_row_start, src_row_end, src_col_start, src_col_end = corridors[i+1][j]
-                        src_corridor = result[src_row_start:src_row_end, src_col_start:src_col_end]
-                        if self._mirror_fill(result, row_start, row_end, col_start, col_end, 
-                                        src_corridor, mirror_vertical=True, mirror_horizontal=False):
-                            changed = True
-                    
-                    # 从左侧走廊水平镜像
-                    if j > 0 and corridors[i][j-1] is not None:
-                        src_row_start, src_row_end, src_col_start, src_col_end = corridors[i][j-1]
-                        src_corridor = result[src_row_start:src_row_end, src_col_start:src_col_end]
-                        if self._mirror_fill(result, row_start, row_end, col_start, col_end,
-                                        src_corridor, mirror_vertical=False, mirror_horizontal=True):
-                            changed = True
-                    
-                    # 从右侧走廊水平镜像
-                    if j < len(corridors[i]) - 1 and corridors[i][j+1] is not None:
-                        src_row_start, src_row_end, src_col_start, src_col_end = corridors[i][j+1]
-                        src_corridor = result[src_row_start:src_row_end, src_col_start:src_col_end]
-                        if self._mirror_fill(result, row_start, row_end, col_start, col_end,
-                                        src_corridor, mirror_vertical=False, mirror_horizontal=True):
-                            changed = True
-            
-            # 如果没有变化，提前退出
-            if not changed:
-                break
+            for src_i, src_j, direction in adjacent_list:
+                src_row_start, src_row_end, src_col_start, src_col_end = corridors[src_i][src_j]
+                src_corridor = result[src_row_start:src_row_end, src_col_start:src_col_end]
+                
+                if direction in ['top', 'bottom']:
+                    self._mirror_fill(result, row_start, row_end, col_start, col_end, 
+                                    src_corridor, mirror_vertical=True, mirror_horizontal=False)
+                else:  # left or right
+                    self._mirror_fill(result, row_start, row_end, col_start, col_end,
+                                    src_corridor, mirror_vertical=False, mirror_horizontal=True)
         
         return result
     
