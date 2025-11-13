@@ -1,9 +1,18 @@
-# Python
+# Python cache
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
 *.py[cod]
 *$py.class
 *.so
 .Python
+
+# Results files
+*_results.json
+
+# Jupyter Notebook
+.ipynb_checkpoints
 
 # Virtual environments
 venv/
@@ -15,9 +24,7 @@ ENV/
 .idea/
 *.swp
 *.swo
-
-# Test outputs
-*_results.json
+*~
 
 # OS
 .DS_Store
