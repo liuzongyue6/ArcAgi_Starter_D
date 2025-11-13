@@ -5,6 +5,7 @@ __pycache__/
 *.pyd
 *.py[cod]
 *$py.class
+*.so
 .Python
 
 # Results files
