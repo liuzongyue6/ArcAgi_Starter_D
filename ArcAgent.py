@@ -32,6 +32,8 @@ class ArcAgent:
         # 2. 根据问题类型调用相应的解法
         if what_kind_of_problem == "ms_d_d931c21c":
             final_answer = self.solve_ms_d_d931c21c(test_input_grid)
+        elif what_kind_of_problem == "ms_d_195ba7dc":
+            final_answer = self.solve_ms_d_195ba7dc(test_input_grid)
         else:
             final_answer = self.solve_ms_d_d931c21c(test_input_grid)
         
@@ -46,10 +48,70 @@ class ArcAgent:
         if len(training_examples) == 0:
             return "Unknown Type"
 
+        if self.check_if_this_is_ms_d_195ba7dc(training_examples):
+            return "ms_d_195ba7dc"
+        
         if self.check_if_this_is_ms_d_d931c21c(training_examples):
             return "ms_d_d931c21c"
        
         return "ms_d_d931c21c"
+
+    def check_if_this_is_ms_d_195ba7dc(self, training_examples):
+        """检查是否是 195ba7dc (左右合并OR操作)"""
+        if len(training_examples) == 0:
+            if self.is_debugging:
+                print("[195ba7dc Check] No training examples")
+            return False
+        
+        for idx, example in enumerate(training_examples):
+            input_grid = example.get_input_data().data()
+            output_grid = example.get_output_data().data()
+            
+            if self.is_debugging:
+                print(f"[195ba7dc Check] Training example {idx}:")
+                print(f"  Input shape: {input_grid.shape}, Output shape: {output_grid.shape}")
+            
+            # 检查输入格式：应该有中间分隔符(值为2)
+            height, width = input_grid.shape
+            
+            # 找到分隔符列（值为2的列）
+            separator_col = None
+            for col in range(width):
+                if np.all(input_grid[:, col] == 2):
+                    separator_col = col
+                    break
+            
+            if separator_col is None:
+                if self.is_debugging:
+                    print(f"  No separator column found - NOT 195ba7dc")
+                return False
+            
+            # 检查输出宽度应该是左半部分或右半部分的宽度
+            left_width = separator_col
+            right_width = width - separator_col - 1
+            
+            if left_width != right_width:
+                if self.is_debugging:
+                    print(f"  Left/right widths don't match ({left_width} vs {right_width}) - NOT 195ba7dc")
+                return False
+            
+            if output_grid.shape != (height, left_width):
+                if self.is_debugging:
+                    print(f"  Output shape mismatch - NOT 195ba7dc")
+                return False
+            
+            # 验证转换逻辑
+            predicted_output = self.solve_ms_d_195ba7dc(input_grid)
+            matches = np.array_equal(predicted_output, output_grid)
+            if self.is_debugging:
+                print(f"  Prediction matches: {matches}")
+            
+            if not matches:
+                return False
+        
+        if self.is_debugging:
+            print("[195ba7dc Check] All training examples match - this IS 195ba7dc")
+        return True
 
     def check_if_this_is_ms_d_d931c21c(self, training_examples):
         """检查是否是 d931c21c (封闭区域边界扩展)"""
@@ -254,3 +316,41 @@ class ArcAgent:
                 stack.append((i + di, j + dj))
         
         return False
+
+    def solve_ms_d_195ba7dc(self, test_input_grid):
+        """
+        处理 195ba7dc 案例：左右合并OR操作
+        1. 找到中间的分隔符（值为2的列）
+        2. 将左右两部分分离
+        3. 对每个位置，如果左边或右边有方块(值为7)，输出1，否则输出0
+        """
+        height, width = test_input_grid.shape
+        
+        # 找到分隔符列（值为2的列）
+        separator_col = None
+        for col in range(width):
+            if np.all(test_input_grid[:, col] == 2):
+                separator_col = col
+                break
+        
+        if separator_col is None:
+            # 如果没有找到分隔符，返回默认值
+            return np.zeros((height, width // 2), dtype=int)
+        
+        # 分离左右两部分
+        left_part = test_input_grid[:, :separator_col]
+        right_part = test_input_grid[:, separator_col + 1:]
+        
+        # 确保左右宽度相同
+        if left_part.shape[1] != right_part.shape[1]:
+            # 如果宽度不同，使用较小的宽度
+            min_width = min(left_part.shape[1], right_part.shape[1])
+            left_part = left_part[:, :min_width]
+            right_part = right_part[:, :min_width]
+        
+        # 创建结果矩阵：OR操作
+        # 如果左边或右边有7，输出1；否则输出0
+        result = np.zeros(left_part.shape, dtype=int)
+        result[(left_part == 7) | (right_part == 7)] = 1
+        
+        return result
