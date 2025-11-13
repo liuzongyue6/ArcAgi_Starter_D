@@ -42,6 +42,8 @@ class ArcAgent:
             final_answer = self.solve_ms_d_195ba7dc(test_input_grid)
         elif what_kind_of_problem == "ms_d_18419cfa":
             final_answer = self.solve_ms_d_18419cfa(test_input_grid)
+        elif what_kind_of_problem == "ms_d_c8b7cc0f":
+            final_answer = self.solve_ms_d_c8b7cc0f(test_input_grid)
         else:
             final_answer = self.solve_ms_d_d931c21c(test_input_grid)
         
@@ -70,6 +72,9 @@ class ArcAgent:
         
         elif self.check_if_this_is_ms_d_195ba7dc(training_examples):
             return "ms_d_195ba7dc"
+        
+        elif self.check_if_this_is_ms_d_c8b7cc0f(training_examples):
+            return "ms_d_c8b7cc0f"
         
         elif self.check_if_this_is_ms_d_d931c21c(training_examples):
             return "ms_d_d931c21c"
@@ -1244,3 +1249,140 @@ class ArcAgent:
                     result[mirrored_i, j] = 2
         
         return result
+
+    def check_if_this_is_ms_d_c8b7cc0f(self, training_examples):
+        """检查是否是 c8b7cc0f (从闭合边界内提取色块并排列到3x3网格)"""
+        if len(training_examples) == 0:
+            if self.is_debugging:
+                print("[c8b7cc0f Check] No training examples")
+            return False
+        
+        for idx, example in enumerate(training_examples):
+            input_grid = example.get_input_data().data()
+            output_grid = example.get_output_data().data()
+            
+            if self.is_debugging:
+                print(f"[c8b7cc0f Check] Training example {idx}:")
+                print(f"  Input shape: {input_grid.shape}, Output shape: {output_grid.shape}")
+            
+            # 1. 检查输出是否是3x3
+            if output_grid.shape != (3, 3):
+                if self.is_debugging:
+                    print(f"  Output not 3x3 - NOT c8b7cc0f")
+                return False
+            
+            # 2. 检查输入是否包含颜色1（边界色）
+            unique_colors = np.unique(input_grid)
+            if 1 not in unique_colors:
+                if self.is_debugging:
+                    print(f"  No color 1 (boundary) - NOT c8b7cc0f")
+                return False
+            
+            # 3. 验证转换逻辑是否匹配
+            predicted_output = self.solve_ms_d_c8b7cc0f(input_grid)
+            matches = np.array_equal(predicted_output, output_grid)
+            if self.is_debugging:
+                print(f"  Prediction matches: {matches}")
+                if not matches:
+                    print(f"  Differences found at {np.sum(predicted_output != output_grid)} positions")
+            
+            if not matches:
+                return False
+        
+        if self.is_debugging:
+            print("[c8b7cc0f Check] All training examples match - this IS c8b7cc0f")
+        return True
+
+    def solve_ms_d_c8b7cc0f(self, test_input_grid):
+        """
+        处理 c8b7cc0f 案例：
+        1. 识别边界颜色（假设是颜色1）
+        2. 找到边界内部区域
+        3. 收集内部的同色块（与边界颜色不同的非0颜色）
+        4. 按从上到下、从左到右的顺序排列到3x3输出网格
+        """
+        height, width = test_input_grid.shape
+        
+        # 1. 识别边界颜色（假设是1）和非边界颜色
+        boundary_color = 1
+        unique_colors = np.unique(test_input_grid)
+        # 找到非0且非边界的颜色
+        target_color = None
+        for color in unique_colors:
+            if color != 0 and color != boundary_color:
+                target_color = color
+                break
+        
+        if target_color is None:
+            # 如果没有找到目标颜色，返回全0的3x3网格
+            return np.zeros((3, 3), dtype=int)
+        
+        if self.is_debugging:
+            print(f"[c8b7cc0f Solve] Boundary color: {boundary_color}, Target color: {target_color}")
+        
+        # 2. 找到边界内部区域
+        inside_boundary = self._find_inside_boundary(test_input_grid, boundary_color)
+        
+        # 3. 收集内部的目标颜色块
+        blocks = []
+        for i in range(height):
+            for j in range(width):
+                if inside_boundary[i, j] and test_input_grid[i, j] == target_color:
+                    blocks.append((i, j))
+        
+        if self.is_debugging:
+            print(f"[c8b7cc0f Solve] Found {len(blocks)} blocks inside boundary")
+        
+        # 4. 创建3x3输出网格并填充
+        output = np.zeros((3, 3), dtype=int)
+        for idx, (i, j) in enumerate(blocks):
+            if idx < 9:  # 最多填充9个位置
+                out_i = idx // 3
+                out_j = idx % 3
+                output[out_i, out_j] = target_color
+        
+        return output
+    
+    def _find_inside_boundary(self, grid, boundary_color):
+        """
+        找到边界内部的区域
+        方法：从边缘开始泛洪填充所有非边界区域，剩下的就是内部区域
+        """
+        height, width = grid.shape
+        
+        # 标记所有从边缘可达的非边界单元格
+        reachable_from_edge = np.zeros_like(grid, dtype=bool)
+        stack = []
+        
+        # 从所有边缘的非边界单元格开始
+        for i in range(height):
+            if grid[i, 0] != boundary_color:
+                stack.append((i, 0))
+            if grid[i, width-1] != boundary_color:
+                stack.append((i, width-1))
+        
+        for j in range(width):
+            if grid[0, j] != boundary_color:
+                stack.append((0, j))
+            if grid[height-1, j] != boundary_color:
+                stack.append((height-1, j))
+        
+        # 泛洪填充（4方向）
+        while stack:
+            i, j = stack.pop()
+            
+            if i < 0 or i >= height or j < 0 or j >= width:
+                continue
+            if reachable_from_edge[i, j] or grid[i, j] == boundary_color:
+                continue
+            
+            reachable_from_edge[i, j] = True
+            
+            # 4个方向
+            for di, dj in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                stack.append((i + di, j + dj))
+        
+        # 内部区域 = 非边界 且 不能从边缘到达
+        inside = ~reachable_from_edge & (grid != boundary_color)
+        
+        return inside
