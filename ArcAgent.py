@@ -32,6 +32,8 @@ class ArcAgent:
         # 2. 根据问题类型调用相应的解法
         if what_kind_of_problem == "ms_d_d931c21c":
             final_answer = self.solve_ms_d_d931c21c(test_input_grid)
+        elif what_kind_of_problem == "ms_d_e9b4f6fc":
+            final_answer = self.solve_ms_d_e9b4f6fc(test_input_grid)
         else:
             final_answer = self.solve_ms_d_d931c21c(test_input_grid)
         
@@ -46,6 +48,9 @@ class ArcAgent:
         if len(training_examples) == 0:
             return "Unknown Type"
 
+        if self.check_if_this_is_ms_d_e9b4f6fc(training_examples):
+            return "ms_d_e9b4f6fc"
+        
         if self.check_if_this_is_ms_d_d931c21c(training_examples):
             return "ms_d_d931c21c"
        
@@ -254,3 +259,171 @@ class ArcAgent:
                 stack.append((i + di, j + dj))
         
         return False
+
+    def check_if_this_is_ms_d_e9b4f6fc(self, training_examples):
+        """检查是否是 e9b4f6fc (封闭区域内颜色映射)"""
+        if len(training_examples) == 0:
+            if self.is_debugging:
+                print("[e9b4f6fc Check] No training examples")
+            return False
+        
+        for idx, example in enumerate(training_examples):
+            input_grid = example.get_input_data().data()
+            output_grid = example.get_output_data().data()
+            
+            if self.is_debugging:
+                print(f"[e9b4f6fc Check] Training example {idx}:")
+                print(f"  Input shape: {input_grid.shape}, Output shape: {output_grid.shape}")
+            
+            # 验证转换逻辑是否匹配
+            predicted_output = self.solve_ms_d_e9b4f6fc(input_grid)
+            if predicted_output is None:
+                if self.is_debugging:
+                    print(f"  No prediction generated - NOT e9b4f6fc")
+                return False
+            
+            matches = np.array_equal(predicted_output, output_grid)
+            if self.is_debugging:
+                print(f"  Prediction matches: {matches}")
+                if not matches:
+                    print(f"  Expected shape: {output_grid.shape}, Got: {predicted_output.shape}")
+                    if predicted_output.shape == output_grid.shape:
+                        print(f"  Differences found at {np.sum(predicted_output != output_grid)} positions")
+            
+            if not matches:
+                return False
+        
+        if self.is_debugging:
+            print("[e9b4f6fc Check] All training examples match - this IS e9b4f6fc")
+        return True
+
+    def solve_ms_d_e9b4f6fc(self, test_input_grid):
+        """
+        处理 e9b4f6fc 案例：
+        1. 找到封闭区域（由某种颜色围成的矩形边框）
+        2. 找到外围的颜色对（两个相邻的非零单元格，远离封闭区域）
+        3. 从颜色对推导映射规则：第一个颜色 -> 第二个颜色
+        4. 提取封闭区域，并应用映射规则替换内部颜色
+        5. 保持边框颜色不变
+        """
+        height, width = test_input_grid.shape
+        
+        # Step 1: Find the enclosed region (border)
+        border_info = self._find_border_region_e9b4f6fc(test_input_grid)
+        if border_info is None:
+            return None
+        
+        min_r, max_r, min_c, max_c, border_color = border_info
+        
+        # Step 2: Find isolated color pairs outside the border
+        color_mappings = self._find_color_pairs_e9b4f6fc(test_input_grid, border_info)
+        
+        if self.is_debugging:
+            print(f"[e9b4f6fc] Border: rows {min_r}-{max_r}, cols {min_c}-{max_c}, color {border_color}")
+            print(f"[e9b4f6fc] Color mappings: {color_mappings}")
+        
+        # Step 3: Extract the enclosed region
+        enclosed_region = test_input_grid[min_r:max_r+1, min_c:max_c+1].copy()
+        
+        # Step 4: Apply color mappings to the enclosed region
+        result = enclosed_region.copy()
+        for from_color, to_color in color_mappings.items():
+            # Replace from_color with to_color, but keep border color unchanged
+            mask = (enclosed_region == from_color)
+            result[mask] = to_color
+        
+        return result
+
+    def _find_border_region_e9b4f6fc(self, grid):
+        """
+        找到封闭区域的边框
+        返回: (min_r, max_r, min_c, max_c, border_color) 或 None
+        """
+        height, width = grid.shape
+        
+        # 尝试每种非零颜色作为边框
+        for test_color in range(1, 10):
+            positions = np.argwhere(grid == test_color)
+            if len(positions) < 8:  # 边框至少要有8个单元格
+                continue
+            
+            min_r, min_c = positions.min(axis=0)
+            max_r, max_c = positions.max(axis=0)
+            
+            # 检查是否形成矩形框架
+            if (max_r - min_r >= 3) and (max_c - min_c >= 3):
+                # 计算在边缘的单元格比例
+                border_cells = 0
+                for r, c in positions:
+                    if r == min_r or r == max_r or c == min_c or c == max_c:
+                        border_cells += 1
+                
+                # 如果至少30%的该颜色单元格在边缘，认为是边框
+                if border_cells / len(positions) > 0.3:
+                    return (min_r, max_r, min_c, max_c, test_color)
+        
+        return None
+
+    def _find_color_pairs_e9b4f6fc(self, grid, border_info):
+        """
+        找到封闭区域外的颜色对
+        颜色对规则：如果找到相邻的两个颜色 (A, B)，
+        则表示封闭区域内的颜色 B 应该被替换为颜色 A
+        返回: dict {from_color: to_color}
+        """
+        min_r, max_r, min_c, max_c, border_color = border_info
+        height, width = grid.shape
+        
+        color_mappings = {}
+        visited = np.zeros_like(grid, dtype=bool)
+        
+        for i in range(height):
+            for j in range(width):
+                if grid[i, j] != 0 and not visited[i, j]:
+                    # 检查是否在封闭区域外
+                    if min_r <= i <= max_r and min_c <= j <= max_c:
+                        visited[i, j] = True
+                        continue
+                    
+                    # 找到一个小的连通分量（最多2个单元格）
+                    component = self._find_small_component_e9b4f6fc(grid, i, j, visited, border_info)
+                    
+                    # 如果恰好是2个单元格且颜色不同，视为颜色对
+                    if len(component) == 2:
+                        colors = [c for _, _, c in component]
+                        if colors[0] != colors[1]:
+                            # 第二个颜色映射到第一个颜色 (B -> A)
+                            color_mappings[colors[1]] = colors[0]
+        
+        return color_mappings
+
+    def _find_small_component_e9b4f6fc(self, grid, start_i, start_j, visited, border_info):
+        """
+        找到一个小的连通分量（最多2个单元格）
+        返回: list of (i, j, color)
+        """
+        min_r, max_r, min_c, max_c, border_color = border_info
+        height, width = grid.shape
+        
+        component = []
+        stack = [(start_i, start_j)]
+        
+        while stack and len(component) < 2:
+            i, j = stack.pop()
+            
+            if i < 0 or i >= height or j < 0 or j >= width:
+                continue
+            if visited[i, j] or grid[i, j] == 0:
+                continue
+            # 确保在封闭区域外
+            if min_r <= i <= max_r and min_c <= j <= max_c:
+                continue
+            
+            visited[i, j] = True
+            component.append((i, j, grid[i, j]))
+            
+            # 只检查直接相邻的4个方向（不包括对角线）
+            for di, dj in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+                stack.append((i + di, j + dj))
+        
+        return component
