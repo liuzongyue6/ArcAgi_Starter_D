@@ -249,10 +249,10 @@ if __name__ == "__main__":
     print("=" * 60)
     
     # User inputs
-    folder_path = 'Milestones/D'
-    problem_name = '195ba7dc'
-    # folder_path = input("Enter folder path (e.g., Milestones/D): ").strip()
-    # problem_name = input("Enter problem name (e.g., c8b7cc0f): ").strip()
+    # folder_path = 'Milestones/D'
+    # problem_name = 'd931c21c'
+    folder_path = input("Enter folder path (e.g., Milestones/D): ").strip()
+    problem_name = input("Enter problem name (e.g., c8b7cc0f): ").strip()
     
     print(f"\n[DEBUG] Folder: {folder_path}")
     print(f"[DEBUG] Problem: {problem_name}")
