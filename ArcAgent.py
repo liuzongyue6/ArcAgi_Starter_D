@@ -49,6 +49,8 @@ class ArcAgent:
             final_answer = self.solve_ms_d_18419cfa(test_input_grid)
         elif what_kind_of_problem == "ms_d_c8b7cc0f":
             final_answer = self.solve_ms_d_c8b7cc0f(test_input_grid)
+        elif what_kind_of_problem == "ms_d_67c52801":
+            final_answer = self.solve_ms_d_67c52801(test_input_grid)
         else:
             final_answer = self.solve_ms_d_d931c21c(test_input_grid)
         
@@ -89,6 +91,9 @@ class ArcAgent:
         
         elif self.check_if_this_is_ms_d_81c0276b(training_examples):
             return "ms_d_81c0276b"
+        
+        elif self.check_if_this_is_ms_d_67c52801(training_examples):
+            return "ms_d_67c52801"
        
         return "Unknown Type"
 
@@ -1662,3 +1667,235 @@ class ArcAgent:
         inside = ~reachable_from_edge & (grid != boundary_color)
         
         return inside
+
+    def check_if_this_is_ms_d_67c52801(self, training_examples):
+        """检查是否是 67c52801 (俄罗斯方块填充问题)"""
+        if len(training_examples) == 0:
+            if self.is_debugging:
+                print("[67c52801 Check] No training examples")
+            return False
+        
+        for idx, example in enumerate(training_examples):
+            input_grid = example.get_input_data().data()
+            output_grid = example.get_output_data().data()
+            
+            if self.is_debugging:
+                print(f"[67c52801 Check] Training example {idx}:")
+                print(f"  Input shape: {input_grid.shape}, Output shape: {output_grid.shape}")
+            
+            # 检查形状是否相同
+            if input_grid.shape != output_grid.shape:
+                if self.is_debugging:
+                    print(f"  Shape mismatch - NOT 67c52801")
+                return False
+            
+            # 检查是否有底部的地面行（最后一行应该是统一的非零颜色）
+            last_row = input_grid[-1, :]
+            ground_color = None
+            if len(np.unique(last_row)) == 1 and last_row[0] != 0:
+                ground_color = last_row[0]
+            else:
+                if self.is_debugging:
+                    print(f"  No uniform ground row - NOT 67c52801")
+                return False
+            
+            # 检查倒数第二行是否有空档（0和ground_color混合）
+            second_last_row = input_grid[-2, :]
+            if not (0 in second_last_row and ground_color in second_last_row):
+                if self.is_debugging:
+                    print(f"  No gaps in riverbed - NOT 67c52801")
+                return False
+            
+            # 验证转换逻辑
+            predicted_output = self.solve_ms_d_67c52801(input_grid)
+            matches = np.array_equal(predicted_output, output_grid)
+            if self.is_debugging:
+                print(f"  Prediction matches: {matches}")
+                if not matches:
+                    print(f"  Differences found at {np.sum(predicted_output != output_grid)} positions")
+            
+            if not matches:
+                return False
+        
+        if self.is_debugging:
+            print("[67c52801 Check] All training examples match - this IS 67c52801")
+        return True
+
+    def solve_ms_d_67c52801(self, test_input_grid):
+        """
+        处理 67c52801 案例：俄罗斯方块填充问题
+        
+        算法步骤：
+        1. 识别底部的地面颜色（最后一行的颜色）
+        2. 识别河床区域（倒数第一、第二行）
+        3. 找到河床中的空档
+        4. 识别上方的彩色矩形块
+        5. 尝试将每个块（可选旋转90°）填入空档
+        6. 输出只保留地面和填入的块
+        """
+        height, width = test_input_grid.shape
+        result = np.zeros((height, width), dtype=int)
+        
+        # 1. 识别地面颜色
+        last_row = test_input_grid[-1, :]
+        ground_color = last_row[0] if len(np.unique(last_row)) == 1 and last_row[0] != 0 else 1
+        
+        if self.is_debugging:
+            print(f"[67c52801 Solve] Ground color: {ground_color}")
+        
+        # 2. 复制地面行
+        result[-1, :] = test_input_grid[-1, :]
+        
+        # 3. 复制河床行中的非空部分（保持地面颜色）
+        riverbed_row_idx = height - 2
+        for col in range(width):
+            if test_input_grid[riverbed_row_idx, col] == ground_color:
+                result[riverbed_row_idx, col] = ground_color
+        
+        # 4. 找到河床中的空档（倒数第二行的0位置）
+        gaps = []
+        for col in range(width):
+            if test_input_grid[riverbed_row_idx, col] == 0:
+                gaps.append(col)
+        
+        if self.is_debugging:
+            print(f"[67c52801 Solve] Gaps at columns: {gaps}")
+        
+        # 5. 识别上方的彩色矩形块
+        blocks = self._find_blocks_67c52801(test_input_grid, ground_color, riverbed_row_idx)
+        
+        if self.is_debugging:
+            print(f"[67c52801 Solve] Found {len(blocks)} blocks")
+            for idx, (color, positions) in enumerate(blocks):
+                print(f"  Block {idx+1}: color={color}, count={len(positions)}")
+        
+        # 6. 将块填入空档
+        self._fill_blocks_into_gaps_67c52801(result, blocks, gaps, riverbed_row_idx, ground_color)
+        
+        return result
+    
+    def _find_blocks_67c52801(self, grid, ground_color, riverbed_row):
+        """
+        找到上方的所有彩色矩形块
+        返回: list of (color, positions) 其中 positions 是 [(row, col), ...]
+        """
+        height, width = grid.shape
+        visited = np.zeros((height, width), dtype=bool)
+        blocks = []
+        
+        # 只检查河床以上的区域
+        for i in range(riverbed_row):
+            for j in range(width):
+                if visited[i, j] or grid[i, j] == 0 or grid[i, j] == ground_color:
+                    continue
+                
+                # 找到一个新块，使用BFS找到所有连通的同色单元格
+                color = grid[i, j]
+                positions = []
+                queue = [(i, j)]
+                
+                while queue:
+                    r, c = queue.pop(0)
+                    if r < 0 or r >= riverbed_row or c < 0 or c >= width:
+                        continue
+                    if visited[r, c] or grid[r, c] != color:
+                        continue
+                    
+                    visited[r, c] = True
+                    positions.append((r, c))
+                    
+                    # 4方向连通
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        queue.append((r + dr, c + dc))
+                
+                if positions:
+                    blocks.append((color, positions))
+        
+        return blocks
+    
+    def _fill_blocks_into_gaps_67c52801(self, result, blocks, gaps, riverbed_row, ground_color):
+        """
+        将块填入空档
+        策略：
+        1. 将blocks按总单元格数从大到小排序
+        2. 将gap组按宽度从大到小排序
+        3. 按顺序匹配：最大的块配最大的gap
+        4. 每个块尝试两种旋转，选择能匹配gap宽度的旋转
+        """
+        # 将gaps分组为连续区间
+        gap_groups = []
+        if gaps:
+            current_group = [gaps[0]]
+            for i in range(1, len(gaps)):
+                if gaps[i] == gaps[i-1] + 1:
+                    current_group.append(gaps[i])
+                else:
+                    gap_groups.append(current_group)
+                    current_group = [gaps[i]]
+            gap_groups.append(current_group)
+        
+        # 按gap宽度从大到小排序
+        gap_groups.sort(key=len, reverse=True)
+        
+        if self.is_debugging:
+            print(f"[67c52801 Fill] Gap groups (sorted by width): {gap_groups}")
+        
+        # 准备块信息并按大小排序
+        block_info = []
+        for block_idx, (color, positions) in enumerate(blocks):
+            rows = [r for r, c in positions]
+            cols = [c for r, c in positions]
+            block_height = max(rows) - min(rows) + 1
+            block_width = max(cols) - min(cols) + 1
+            
+            block_info.append({
+                'block_idx': block_idx,
+                'color': color,
+                'height': block_height,
+                'width': block_width,
+                'size': len(positions)  # Total cell count
+            })
+        
+        # 按块的总单元格数从大到小排序
+        block_info.sort(key=lambda x: x['size'], reverse=True)
+        
+        if self.is_debugging:
+            print(f"[67c52801 Fill] Blocks (sorted by size):")
+            for bi in block_info:
+                print(f"  Block {bi['block_idx']+1}: color={bi['color']}, size={bi['height']}x{bi['width']}, cells={bi['size']}")
+        
+        # 匹配块和gap
+        for gap_idx, gap_group in enumerate(gap_groups):
+            if gap_idx >= len(block_info):
+                break
+            
+            gap_width = len(gap_group)
+            bi = block_info[gap_idx]
+            
+            # 尝试两种旋转找到匹配gap宽度的旋转
+            fill_width, fill_height, rotation = None, None, None
+            
+            if bi['width'] == gap_width:
+                # 原始方向匹配
+                fill_width, fill_height, rotation = bi['width'], bi['height'], 0
+            elif bi['height'] == gap_width:
+                # 旋转90°后匹配
+                fill_width, fill_height, rotation = bi['height'], bi['width'], 90
+            else:
+                # 无法匹配，跳过
+                if self.is_debugging:
+                    print(f"  Block {bi['block_idx']+1} cannot match gap width {gap_width}")
+                continue
+            
+            # 填充块
+            start_col = gap_group[0]
+            for offset_row in range(fill_height):
+                target_row = riverbed_row - offset_row
+                for offset_col in range(fill_width):
+                    target_col = start_col + offset_col
+                    if 0 <= target_row < result.shape[0] and 0 <= target_col < result.shape[1]:
+                        result[target_row, target_col] = bi['color']
+            
+            if self.is_debugging:
+                print(f"  Filled block {bi['block_idx']+1} (color={bi['color']}, rotation={rotation}) at columns {start_col}-{start_col+fill_width-1}")
+
