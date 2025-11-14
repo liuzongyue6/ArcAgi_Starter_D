@@ -21,12 +21,17 @@ class ArcAgent_28e73c20:
         """
         Draw a clockwise inward spiral pattern on a grid.
         
-        This is a SINGLE CONTINUOUS PATH that spirals inward.
-        Starting at (0,0) moving right, the snake:
-        1. Marks current cell as 3
-        2. Tries to continue in current direction
-        3. If blocked (boundary or already-3), turns clockwise and tries again
-        4. Stops when cannot move in any direction
+        The spiral consists of rectangular outlines, each separated by a 1-cell gap.
+        For each rectangle:
+        - Top edge: full width (left to right)
+        - Right edge: full height minus top (top+1 to bottom, going down)
+        - Bottom edge: full width minus right (right-1 to left, going left)
+        - Left edge: almost full height (bottom-1 to top+2, going up, leaving 1-row gap)
+        
+        Key insight: Left column stays at 0 for all rectangles, but inner rectangles
+        should not overwrite the left column when drawing their bottom edge.
+        
+        After each rectangle, shrink inward by 2 (1 for the line, 1 for the gap).
         
         Args:
             test_input_grid: numpy array of all 0s
@@ -37,57 +42,81 @@ class ArcAgent_28e73c20:
         height, width = test_input_grid.shape
         result = test_input_grid.copy()
         
-        # Direction vectors: right, down, left, up (clockwise)
-        directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]
-        direction_names = ['right', 'down', 'left', 'up']
-        dir_idx = 0  # Start moving right
-        
-        row, col = 0, 0
-        result[row, col] = 3
+        # Start with outer bounds
+        top, bottom = 0, height - 1
+        left, right = 0, width - 1
+        first_rectangle = True
         
         if self.is_debugging:
-            print(f"[28e73c20] Starting snake at (0,0)")
+            print(f"[28e73c20] Starting spiral: grid size {height}x{width}")
         
-        while True:
-            moved = False
-            
-            # Try current direction first
-            dr, dc = directions[dir_idx]
-            next_row, next_col = row + dr, col + dc
-            
-            if (0 <= next_row < height and 
-                0 <= next_col < width and 
-                result[next_row, next_col] == 0):
-                # Can move forward
-                row, col = next_row, next_col
-                result[row, col] = 3
-                moved = True
-                if self.is_debugging:
-                    print(f"  {direction_names[dir_idx]}: ({row},{col})")
-            else:
-                # Try turning clockwise until we find a valid direction
-                for turn_count in range(1, 4):  # Try 1, 2, 3 turns (don't try same direction twice)
-                    new_dir_idx = (dir_idx + turn_count) % 4
-                    dr, dc = directions[new_dir_idx]
-                    next_row, next_col = row + dr, col + dc
-                    
-                    if (0 <= next_row < height and 
-                        0 <= next_col < width and 
-                        result[next_row, next_col] == 0):
-                        # Found a valid direction after turning
-                        dir_idx = new_dir_idx
-                        row, col = next_row, next_col
-                        result[row, col] = 3
-                        moved = True
-                        if self.is_debugging:
-                            print(f"  Turn {turn_count}x, then {direction_names[dir_idx]}: ({row},{col})")
-                        break
-            
-            if not moved:
-                # Cannot move in any direction - snake is complete
-                if self.is_debugging:
-                    print(f"[28e73c20] Snake complete at ({row},{col})")
+        while left <= right:  # Continue as long as there's horizontal space
+            # Check if we can draw anything
+            if top > bottom + 1:  # No vertical space left at all
                 break
+                
+            if self.is_debugging:
+                print(f"  Rectangle: top={top}, bottom={bottom}, left={left}, right={right}, first={first_rectangle}")
+            
+            # 1. Draw top edge (going right) - always draw this if we enter the loop
+            for col in range(left, right + 1):
+                result[top, col] = 3
+                if self.is_debugging:
+                    print(f"    Top: ({top},{col})")
+            
+            # Only continue with other edges if there's enough vertical space
+            if top >= bottom:
+                # Not enough space for remaining edges, stop after top edge
+                break
+            
+            # 2. Draw right edge (going down), skip the top corner
+            for row in range(top + 1, bottom + 1):
+                result[row, right] = 3
+                if self.is_debugging:
+                    print(f"    Right: ({row},{right})")
+            
+            # 3. Draw bottom edge (going left), skip the right corner, only if there's more than 1 row
+            if bottom > top:
+                # For the first rectangle, draw all the way to left=0
+                # For inner rectangles, stop at left+1 to avoid overwriting left edge
+                if first_rectangle:
+                    stop_col = left - 1
+                else:
+                    stop_col = left + 1  # Stop one column after left
+                for col in range(right - 1, stop_col, -1):
+                    result[bottom, col] = 3
+                    if self.is_debugging:
+                        print(f"    Bottom: ({bottom},{col})")
+            
+            # 4. Draw left edge (going up), skip bottom corner
+            # Go from bottom-1 down to top+1 (stop before row top to leave gap)
+            # Need at least one cell to draw: bottom-1 >= top+1
+            if bottom - 1 >= top + 1:
+                # Always stop at top+1 for all rectangles
+                stop_row = top + 1
+                for row in range(bottom - 1, stop_row, -1):
+                    result[row, left] = 3
+                    if self.is_debugging:
+                        print(f"    Left: ({row},{left})")
+            
+            # Shrink for next rectangle: 
+            # top and bottom move in by 2
+            # right moves in by 2
+            # For the first rectangle, left stays at 0 (no gap on the left for first iteration)
+            # For subsequent rectangles, left increases by 2
+            top += 2
+            bottom -= 2
+            right -= 2
+            if first_rectangle:
+                # left += 0 (stays at 0)
+                pass
+            else:
+                left += 2
+            
+            first_rectangle = False
+        
+        if self.is_debugging:
+            print(f"[28e73c20] Spiral complete")
         
         return result
     
