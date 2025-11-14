@@ -4,6 +4,7 @@ from ArcProblem import ArcProblem
 from ArcData import ArcData
 from ArcSet import ArcSet
 from collections import Counter
+from ArcAgent_28e73c20 import ArcAgent_28e73c20
 
 
 class ArcAgent:
@@ -14,6 +15,7 @@ class ArcAgent:
         """
         self.is_debugging = False
         self.counter = 0
+        self.agent_28e73c20 = ArcAgent_28e73c20()
 
     def make_predictions(self, arc_problem: ArcProblem) -> list[np.ndarray]:
         """
@@ -31,7 +33,9 @@ class ArcAgent:
             print(f"Problem type detected: {what_kind_of_problem}")
 
         # 2. 根据问题类型调用相应的解法
-        if what_kind_of_problem == "ms_d_992798f6":
+        if what_kind_of_problem == "ms_d_28e73c20":
+            final_answer = self.solve_ms_d_28e73c20(test_input_grid)
+        elif what_kind_of_problem == "ms_d_992798f6":
             final_answer = self.solve_ms_d_992798f6(test_input_grid)
         elif what_kind_of_problem == "ms_d_c1990cce":
             final_answer = self.solve_ms_d_c1990cce(test_input_grid)
@@ -65,7 +69,10 @@ class ArcAgent:
         if len(training_examples) == 0:
             return "Unknown Type"
 
-        if self.check_if_this_is_ms_d_e9b4f6fc(training_examples):
+        if self.check_if_this_is_ms_d_28e73c20(training_examples):
+            return "ms_d_28e73c20"
+        
+        elif self.check_if_this_is_ms_d_e9b4f6fc(training_examples):
             return "ms_d_e9b4f6fc"
         
         elif self.check_if_this_is_ms_d_992798f6(training_examples):
@@ -1898,4 +1905,18 @@ class ArcAgent:
             
             if self.is_debugging:
                 print(f"  Filled block {bi['block_idx']+1} (color={bi['color']}, rotation={rotation}) at columns {start_col}-{start_col+fill_width-1}")
+
+    def check_if_this_is_ms_d_28e73c20(self, training_examples):
+        """检查是否是 28e73c20 (螺旋蛇形路径)"""
+        self.agent_28e73c20.is_debugging = self.is_debugging
+        return self.agent_28e73c20.check_if_match(training_examples)
+    
+    def solve_ms_d_28e73c20(self, test_input_grid):
+        """
+        处理 28e73c20 案例：螺旋蛇形路径
+        从左上角开始，按顺时针方向向内螺旋前进，用绿色(3)画出路径
+        """
+        self.agent_28e73c20.is_debugging = self.is_debugging
+        return self.agent_28e73c20.solve(test_input_grid)
+
 
