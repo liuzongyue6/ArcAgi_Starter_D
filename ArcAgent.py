@@ -49,6 +49,8 @@ class ArcAgent:
             final_answer = self.solve_ms_d_18419cfa(test_input_grid)
         elif what_kind_of_problem == "ms_d_c8b7cc0f":
             final_answer = self.solve_ms_d_c8b7cc0f(test_input_grid)
+        elif what_kind_of_problem == "ms_d_c48954c1":
+            final_answer = self.solve_ms_d_c48954c1(test_input_grid)
         else:
             final_answer = self.solve_ms_d_d931c21c(test_input_grid)
         
@@ -83,6 +85,9 @@ class ArcAgent:
         
         elif self.check_if_this_is_ms_d_c8b7cc0f(training_examples):
             return "ms_d_c8b7cc0f"
+        
+        elif self.check_if_this_is_ms_d_c48954c1(training_examples):
+            return "ms_d_c48954c1"
         
         elif self.check_if_this_is_ms_d_d931c21c(training_examples):
             return "ms_d_d931c21c"
@@ -1662,3 +1667,112 @@ class ArcAgent:
         inside = ~reachable_from_edge & (grid != boundary_color)
         
         return inside
+
+    def check_if_this_is_ms_d_c48954c1(self, training_examples):
+        """检查是否是 c48954c1 (3×3 to 9×9 mirror expansion)"""
+        if len(training_examples) == 0:
+            if self.is_debugging:
+                print("[c48954c1 Check] No training examples")
+            return False
+        
+        for idx, example in enumerate(training_examples):
+            input_grid = example.get_input_data().data()
+            output_grid = example.get_output_data().data()
+            
+            if self.is_debugging:
+                print(f"[c48954c1 Check] Training example {idx}:")
+                print(f"  Input shape: {input_grid.shape}, Output shape: {output_grid.shape}")
+            
+            # 1. 检查输入是否是3x3
+            if input_grid.shape != (3, 3):
+                if self.is_debugging:
+                    print(f"  Input not 3x3 - NOT c48954c1")
+                return False
+            
+            # 2. 检查输出是否是9x9
+            if output_grid.shape != (9, 9):
+                if self.is_debugging:
+                    print(f"  Output not 9x9 - NOT c48954c1")
+                return False
+            
+            # 3. 检查中心3x3是否等于输入
+            center = output_grid[3:6, 3:6]
+            if not np.array_equal(center, input_grid):
+                if self.is_debugging:
+                    print(f"  Center doesn't match input - NOT c48954c1")
+                return False
+            
+            # 4. 验证转换逻辑是否匹配
+            predicted_output = self.solve_ms_d_c48954c1(input_grid)
+            matches = np.array_equal(predicted_output, output_grid)
+            if self.is_debugging:
+                print(f"  Prediction matches: {matches}")
+                if not matches:
+                    print(f"  Differences found at {np.sum(predicted_output != output_grid)} positions")
+            
+            if not matches:
+                return False
+        
+        if self.is_debugging:
+            print("[c48954c1 Check] All training examples match - this IS c48954c1")
+        return True
+
+    def solve_ms_d_c48954c1(self, test_input_grid):
+        """
+        处理 c48954c1 案例：3×3 to 9×9 mirror expansion
+        
+        变换过程：
+        1. 将输入的3×3矩阵放在输出9×9矩阵的中心位置 (rows 3:6, cols 3:6)
+        2. 水平扩展：
+           - 左侧 (cols 0:3): 输入水平翻转 (left-right flip)
+           - 右侧 (cols 6:9): 输入水平翻转 (left-right flip)
+        3. 垂直扩展：
+           - 上方 (rows 0:3): 输入垂直翻转 (up-down flip)
+           - 下方 (rows 6:9): 输入垂直翻转 (up-down flip)
+        4. 四个角：输入180°旋转
+        """
+        if test_input_grid.shape != (3, 3):
+            if self.is_debugging:
+                print(f"[c48954c1 Solver] Warning: Input is not 3×3, got {test_input_grid.shape}")
+            # Return a default 9×9 grid if input is not correct size
+            return np.zeros((9, 9), dtype=test_input_grid.dtype)
+        
+        # Create 9×9 output grid
+        result = np.zeros((9, 9), dtype=test_input_grid.dtype)
+        
+        # Prepare flipped versions
+        flipped_horizontal = np.flip(test_input_grid, axis=1)  # left-right flip
+        flipped_vertical = np.flip(test_input_grid, axis=0)    # up-down flip
+        rotated_180 = np.rot90(test_input_grid, k=2)           # 180° rotation
+        
+        # Center (1, 1): Original input
+        result[3:6, 3:6] = test_input_grid
+        
+        # Top center (0, 1): Vertical flip
+        result[0:3, 3:6] = flipped_vertical
+        
+        # Bottom center (2, 1): Vertical flip
+        result[6:9, 3:6] = flipped_vertical
+        
+        # Middle left (1, 0): Horizontal flip
+        result[3:6, 0:3] = flipped_horizontal
+        
+        # Middle right (1, 2): Horizontal flip
+        result[3:6, 6:9] = flipped_horizontal
+        
+        # Top left corner (0, 0): 180° rotation
+        result[0:3, 0:3] = rotated_180
+        
+        # Top right corner (0, 2): 180° rotation
+        result[0:3, 6:9] = rotated_180
+        
+        # Bottom left corner (2, 0): 180° rotation
+        result[6:9, 0:3] = rotated_180
+        
+        # Bottom right corner (2, 2): 180° rotation
+        result[6:9, 6:9] = rotated_180
+        
+        if self.is_debugging:
+            print(f"[c48954c1 Solver] Created 9×9 output from 3×3 input")
+        
+        return result
