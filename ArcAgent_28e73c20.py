@@ -65,7 +65,8 @@ class ArcAgent_28e73c20:
                     print(f"    Top: ({top},{col})")
             
             # Only continue with other edges if there's enough vertical space
-            if top >= bottom:
+            # BUT: allow left edge for non-first rectangles even when top==bottom
+            if top >= bottom and first_rectangle:
                 # Not enough space for remaining edges, stop after top edge
                 break
             
@@ -88,13 +89,26 @@ class ArcAgent_28e73c20:
                     if self.is_debugging:
                         print(f"    Bottom: ({bottom},{col})")
             
-            # 4. Draw left edge (going up), skip bottom corner
-            # Go from bottom-1 down to top+1 (stop before row top to leave gap)
-            # Need at least one cell to draw: bottom-1 >= top+1
-            if bottom - 1 >= top + 1:
-                # Always stop at top+1 for all rectangles
-                stop_row = top + 1
-                for row in range(bottom - 1, stop_row, -1):
+            # 4. Draw left edge (going up), skip bottom corner (for first rect) or start one beyond bottom (for later rects)
+            # First rectangle: start from bottom-1, go down to row top+2
+            # Later rectangles: start from bottom+1 (one row past bottom!), go down to row top
+            # Need at least one cell to draw
+            if first_rectangle:
+                if bottom >= top + 2:  # Need at least 2 rows for first rectangle
+                    start_row = bottom - 1
+                    stop_row = top + 1  # Gives rows down to top+2
+                    for row in range(start_row, stop_row, -1):
+                        result[row, left] = 3
+                        if self.is_debugging:
+                            print(f"    Left: ({row},{left})")
+            else:
+                # For non-first rectangles, can draw even when top==bottom
+                # Draw from bottom+1 down to top (even if top==bottom, this gives 1-2 cells)
+                start_row = bottom + 1  # Start ONE ROW PAST bottom!
+                stop_row = top - 1  # Gives rows down to top
+                if self.is_debugging:
+                    print(f"    Left edge: start_row={start_row}, stop_row={stop_row}, range={list(range(start_row, stop_row, -1))}")
+                for row in range(start_row, stop_row, -1):
                     result[row, left] = 3
                     if self.is_debugging:
                         print(f"    Left: ({row},{left})")
